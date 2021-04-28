@@ -4,4 +4,3 @@ google-auth-oauthlib
 sqlite3
 unidecode
 dateparser
-numpy

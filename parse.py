@@ -4,7 +4,7 @@ import re
 from unidecode import unidecode
 import dateparser
 from utils import printProgressBar, levenshtein
-
+import difflib
 
 def prepareDatabase(conn):
     cursor = conn.cursor()
@@ -84,7 +84,7 @@ def parseTypes(item):
         noGuess += 1
 
 
-def parseCourses(item, courses):
+def parseCourses(item, coursesIdByName):
     global noGuess
 
     item['courses'] = []
@@ -95,12 +95,13 @@ def parseCourses(item, courses):
         # Extracted code number
         item['courses'] += matches
     else:
-        # Perform Levenshtein over course names
         tokens = item['path'].split('/')
         for token in tokens:
-            for course in courses:
-                if levenshtein(unidecode(course['name'].lower()), token.strip()) <= 3:
-                    item['courses'].append(course['id'])
+            matches = difflib.get_close_matches(token.strip(), coursesIdByName.keys(), 1, 0.8)
+            if len(matches) > 0:
+                courseName = matches[0]
+                # print(f"Guess {item['path']} : {courseName}")
+                item['courses'].append(coursesIdByName[courseName])
 
     if len(item['courses']) == 0:
         # print(f"No guess {item['path']}")
@@ -165,11 +166,11 @@ def main():
 
     prepareDatabase(conn)
 
-    rawItems = conn.cursor().execute("SELECT path,id,link,owner FROM file WHERE type='file' LIMIT 1000").fetchall()
+    rawItems = conn.cursor().execute("SELECT path,id,link,owner FROM file WHERE type='file'").fetchall()
     parsedItems = []
 
-    courses = conn.cursor().execute(f"SELECT id,name FROM course")
-    courses = list(map(lambda c : {'id': c[0], 'name': c[1]}, courses))
+    coursesIdByName = conn.cursor().execute(f"SELECT name,id FROM course")
+    coursesIdByName = dict(coursesIdByName)
 
     for i in range(0, len(rawItems)):
         printProgressBar(i+1, len(rawItems), prefix = 'Progress:', suffix = 'Complete', length = 50)
@@ -183,7 +184,7 @@ def main():
 
         parseTypes(parsedItem)
 
-        parseCourses(parsedItem, courses)
+        parseCourses(parsedItem, coursesIdByName)
 
         parseDate(parsedItem)
 
@@ -211,7 +212,7 @@ def main():
                 (parsedItem['id'], course)
             )
 
-    conn.commit()
+        conn.commit()
 
     print(f"No guesses {noGuess}")
 
